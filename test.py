@@ -36,6 +36,8 @@ dg_cry = DefGate("CRY", cry, [theta])
 dg_crx = DefGate("CRX", crx, [theta])
 dg_crz = DefGate("CRZ", crz, [theta])
 dg_cy = DefGate("CY", cy)
+# print(type(dg_cry))
+# print(dg_cry)
 
 CRY = dg_cry.get_constructor()
 CRX = dg_crx.get_constructor()
@@ -53,14 +55,37 @@ def rus(input, theta):
     pq += CY(reg[1], reg[2])
     pq += RZ(-np.pi / 2, reg[1])
     pq += CRY(2 * theta)(reg[0], reg[1])
+    # print(pq)
     return pq, reg
 
 
+# def rus1(theta):
+#     gate_pq = Program()
+#     gate_pq += dg_cry
+#     gate_pq += dg_cy
+#     rus_pq = Program()
+#     rus_pq += X(0)
+#     rus_pq += CRY(2 * theta)(0, 1)
+#     rus_pq += CY(1, 2)
+#     rus_pq += RZ(-np.pi / 2, 1)
+#     rus_pq += CRY(2 * theta)(0, 1)
+#     pq = gate_pq + rus_pq
+#     acl_ro = pq.declare('acl_ro', 'BIT', 1)
+#     pq += MEASURE(1, acl_ro)
+#     # pq.while_do(acl_ro, Program(RY(-np.pi / 2, 2) + rus_pq)
+#     pq.if_then(acl_ro, Program(RY(-np.pi / 2, 2)))
+#     print(pq)
+#     return pq
+
+
 inp = QubitPlaceholder()
-angle = 0.1
+angle = 0.7
+gate_pq = Program(dg_cry, dg_cy)
 pq, reg = rus(inp, angle)
-print(address_qubits(pq))
-addressed_pq = address_qubits(pq).measure_all()
-cnt = qvm.run(addressed_pq, trials=10)
+# print(address_qubits(pq))
+# pq = rus1(angle)
+addressed_pq = gate_pq + address_qubits(pq)
+print(addressed_pq)
+cnt = qvm.run(addressed_pq.measure_all(), trials=10)
 print(cnt)
 
