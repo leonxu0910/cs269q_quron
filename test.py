@@ -8,6 +8,7 @@ from pyquil.quilatom import QubitPlaceholder
 from pyquil.api import QVMConnection, WavefunctionSimulator
 from pyquil.paulis import PauliSum, PauliTerm, sZ, sI
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
 
 
 qvm = QVMConnection()
@@ -85,6 +86,38 @@ def rus(inputs, w, b):
     return pq, an_reg[1]
 
 
+def rus_single(input, theta):
+    reg = list()
+    reg.append(input)
+    reg.append(QubitPlaceholder())
+    reg.append(QubitPlaceholder())
+    # Gates and classical memory preparation
+    prep_pq = Program()
+    prep_pq += dg_cry
+    prep_pq += dg_cy
+    acl_ro = prep_pq.declare('acl_ro', 'BIT', 1)
+    # Rotation gates
+    rot_pq = Program()
+    rot_pq += CRY(2 * theta)(reg[0], reg[1])
+    rot_pq += CY(reg[1], reg[2])
+    rot_pq += RZ(-np.pi / 2, reg[1])
+    rot_pq += CRY(2 * theta)(reg[0], reg[1])
+    # Ancilla bit measurement
+    pq = Program()
+    pq += prep_pq
+    pq += rot_pq
+    pq += MEASURE(reg[1], acl_ro)
+    # Repeated circuit
+    rep_pq = Program()
+    # rep_pq += RESET(reg[1])
+    rep_pq += RY(-np.pi / 2, reg[2])
+    rep_pq += rot_pq
+    rep_pq += MEASURE(reg[1], acl_ro)
+
+    pq.while_do(acl_ro, rep_pq)
+    return pq, reg[2]
+
+
 def xor_networks(inputs, theta):
     w = theta[0:6]
     b = theta[6:len(theta)]
@@ -98,19 +131,27 @@ def xor_networks(inputs, theta):
     return pq, output_reg
 
 
+angles = [0, (1/8) * np.pi/2, (2/8) * np.pi/2, (3/8) * np.pi/2, (4/8) * np.pi/2, (5/8) * np.pi/2, (6/8) * np.pi/2, (7/8) * np.pi/2, (8/8) * np.pi/2]
+percent = []
+for a in angles:
+    inp = QubitPlaceholder()
+    pq, out = rus_single(inp, a)
+    # print(address_qubits(pq))
+    # pq = rus1(angle)
+    pq = Program(X(inp)) + pq
+    ro = pq.declare('ro', 'BIT', 1)
+    pq += MEASURE(out, ro)
+    addressed_pq = address_qubits(pq)
+    # print(addressed_pq)
+    # y = sim.expectation(addressed_pq, [sZ(0)]).real[0]
+    cnt = np.array(qvm.run(addressed_pq, trials=100))
+    y = np.sum(cnt.T[0]) / cnt.T[0].shape[0]
+    percent.append(y)
+print(percent)
 
-inp = [QubitPlaceholder(), QubitPlaceholder()]
-# pq, out = rus(inp, [np.pi, np.pi], np.pi)
-# # print(address_qubits(pq))
-# # pq = rus1(angle)
-# pq = Program() + pq
-# ro = pq.declare('ro', 'BIT', 1)
-# pq += MEASURE(out, ro)
-# addressed_pq = address_qubits(pq)
-# # print(addressed_pq)
-# cnt = np.array(qvm.run(addressed_pq, trials=100))
-# y = np.sum(cnt.T[0]) / cnt.T[0].shape[0]
-# print(y)
+plt.plot(angles, percent)
+plt.show()
+
 
 # param = [np.pi, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi]
 # pq, out = xor_networks(inp, param)
@@ -188,8 +229,8 @@ def train_xor_single(samples):
     return res.x, res.fun
 
 
-samples = generate_samples()
-print(train_xor(samples))
+# samples = generate_samples()
+# print(train_xor(samples))
 
 # q = QubitPlaceholder()
 # pq = Program(X(q))
