@@ -1,134 +1,19 @@
-import numpy as np
-from pyquil import Program
-from pyquil.gates import MEASURE, I, X, CNOT, H, RY, RZ, Z, RESET
+
 from pyquil.quil import address_qubits
-from pyquil.parameters import Parameter, quil_sin, quil_cos
-from pyquil.quilbase import DefGate
-from pyquil.quilatom import QubitPlaceholder
 from pyquil.api import QVMConnection, WavefunctionSimulator
 from pyquil.paulis import PauliSum, PauliTerm, sZ, sI
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+from networks import *
 
 
 qvm = QVMConnection()
 
 sim = WavefunctionSimulator()
 
-theta = Parameter('theta')
 
-cry = np.array([[1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, quil_cos(theta / 2), -quil_sin(theta / 2)],
-                [0, 0, quil_sin(theta / 2), quil_cos(theta / 2)]])
-
-crx = np.array([[1, 0, 0, 0],
-                [0, 1, 0, 0],
-                [0, 0, quil_cos(theta / 2), -1j * quil_sin(theta / 2)],
-                [0, 0, -1j * quil_sin(theta / 2), quil_cos(theta / 2)]])
-
-crz = np.array([[1, 0, 0,  0],
-                [0, 1, 0,  0],
-                [0, 0, quil_cos(theta / 2) - 1j * quil_sin(theta / 2), 0],
-                [0, 0, 0, quil_cos(theta / 2) + 1j * quil_sin(theta / 2)]])
-
-cy = np.array([[1, 0, 0,  0],
-               [0, 1, 0,  0],
-               [0, 0, 0, 0 - 1j],
-               [0, 0, 0 + 1j, 0]])
-
-dg_cry = DefGate("CRY", cry, [theta])
-dg_crx = DefGate("CRX", crx, [theta])
-dg_crz = DefGate("CRZ", crz, [theta])
-dg_cy = DefGate("CY", cy)
-# print(type(dg_cry))
-# print(dg_cry)
-
-CRY = dg_cry.get_constructor()
-CRX = dg_crx.get_constructor()
-CRZ = dg_crz.get_constructor()
-CY = dg_cy.get_constructor()
-
-
-def rus(inputs, w, b):
-    in_reg = list()
-    for i in inputs:
-        in_reg.append(i)
-    an_reg = list()
-    an_reg.append(QubitPlaceholder())
-    an_reg.append(QubitPlaceholder())
-    # Gates and classical memory preparation
-    prep_pq = Program()
-    acl_ro = prep_pq.declare('acl_{}_ro'.format(an_reg[0]), 'BIT', 1)
-    # Rotation gates
-    rot_linear_pq = Program()
-    for i in range(len(w)):
-        rot_linear_pq += CRY(w[i])(in_reg[i], an_reg[0])
-    rot_linear_pq += RY(b, an_reg[0])
-    rot_pq = Program()
-    rot_pq += rot_linear_pq
-    rot_pq += CY(an_reg[0], an_reg[1])
-    rot_pq += RZ(-np.pi / 2, an_reg[0])
-    rot_pq += rot_linear_pq
-    # Ancilla bit measurement
-    pq = Program()
-    pq += prep_pq
-    pq += rot_pq
-    pq += MEASURE(an_reg[0], acl_ro)
-    # Repeated circuit
-    rep_pq = Program()
-    # rep_pq += RESET(reg[1])
-    rep_pq += RY(-np.pi / 2, an_reg[1])
-    rep_pq += rot_pq
-    rep_pq += MEASURE(an_reg[0], acl_ro)
-
-    pq.while_do(acl_ro, rep_pq)
-    return pq, an_reg[1]
-
-
-def rus_single(input, theta):
-    reg = list()
-    reg.append(input)
-    reg.append(QubitPlaceholder())
-    reg.append(QubitPlaceholder())
-    # Gates and classical memory preparation
-    prep_pq = Program()
-    prep_pq += dg_cry
-    prep_pq += dg_cy
-    acl_ro = prep_pq.declare('acl_ro', 'BIT', 1)
-    # Rotation gates
-    rot_pq = Program()
-    rot_pq += CRY(2 * theta)(reg[0], reg[1])
-    rot_pq += CY(reg[1], reg[2])
-    rot_pq += RZ(-np.pi / 2, reg[1])
-    rot_pq += CRY(2 * theta)(reg[0], reg[1])
-    # Ancilla bit measurement
-    pq = Program()
-    pq += prep_pq
-    pq += rot_pq
-    pq += MEASURE(reg[1], acl_ro)
-    # Repeated circuit
-    rep_pq = Program()
-    # rep_pq += RESET(reg[1])
-    rep_pq += RY(-np.pi / 2, reg[2])
-    rep_pq += rot_pq
-    rep_pq += MEASURE(reg[1], acl_ro)
-
-    pq.while_do(acl_ro, rep_pq)
-    return pq, reg[2]
-
-
-def xor_networks(inputs, theta):
-    w = theta[0:6]
-    b = theta[6:len(theta)]
-    prep_pq = Program()
-    prep_pq += dg_cry
-    prep_pq += dg_cy
-    hidden_1_pq, hidden_1_reg = rus(inputs, [w[0], w[1]], b[0])
-    hidden_2_pq, hidden_2_reg = rus(inputs, [w[2], w[3]], b[1])
-    output_pq, output_reg = rus([hidden_1_reg, hidden_2_reg], [w[4], w[5]], b[2])
-    pq = prep_pq + hidden_1_pq + hidden_2_pq + output_pq
-    return pq, output_reg
+def sigmoid(x):
+    return np.arctan(np.tan(x)**2)
 
 
 angles = [0, (1/8) * np.pi/2, (2/8) * np.pi/2, (3/8) * np.pi/2, (4/8) * np.pi/2, (5/8) * np.pi/2, (6/8) * np.pi/2, (7/8) * np.pi/2, (8/8) * np.pi/2]
@@ -149,7 +34,9 @@ for a in angles:
     percent.append(y)
 print(percent)
 
-plt.plot(angles, percent)
+sigmoid_val = sigmoid(np.array(angles)) / (np.pi/2)
+plt.plot(angles, percent, 'bo')
+plt.plot(angles, sigmoid_val, 'r')
 plt.show()
 
 
@@ -194,7 +81,6 @@ def fun_rus(inputs, param, initial_pq=None):
 
 
 def train_xor(samples):
-    # param = [np.pi, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi, np.pi]
     param = [np.pi,0,0,np.pi,np.pi,np.pi,0,0,np.pi]
     s = samples[2]
     sec_reg = QubitPlaceholder()
@@ -215,7 +101,6 @@ def train_xor(samples):
 
 def train_xor_single(samples):
     param = [np.pi, np.pi, np.pi]
-    # param = [1.21664167e+00, 1.18965062e+00, 1.18263409e+00, 1.22122501e+00, 1.14936869e+00, 1.21845866e+00, 8.84375255e-05, 8.41587697e-05, 8.84375255e-05]
     s = samples[0]
     val = sim.expectation(address_qubits(fun_rus(s[1], param, s[0])), [sZ(3)]).real[0]
     print(address_qubits(fun_rus(s[1], param, s[0])))
